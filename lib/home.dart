@@ -9,6 +9,7 @@ import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:cloudinary_flutter/cloudinary_context.dart';
 import 'package:cloudinary_flutter/image/cld_image.dart';
 import 'package:cloudinary_url_gen/cloudinary.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -102,7 +103,12 @@ class _VisionAssistantScreenState extends State<VisionAssistantScreen>
   }
 
   Future<void> _initSpeech() async {
-    await _speech.initialize();
+    bool available = await _speech.initialize();
+    // Optionally, handle the case when speech recognition is not available
+    if (!available) {
+      // Provide feedback to the user or disable mic functionality
+      print("Speech recognition not available");
+    }
   }
 
   Future<void> _speak(String text) async {
@@ -110,25 +116,40 @@ class _VisionAssistantScreenState extends State<VisionAssistantScreen>
   }
 
   Future<void> _listen() async {
+    if (!await _requestMicrophonePermission()) {
+      return;
+    }
     if (!_isListening) {
       bool available = await _speech.initialize();
       if (available) {
         setState(() => _isListening = true);
-        _speech.listen(
-          onResult: (result) {
-            setState(() {
-              _promptController.text = result.recognizedWords;
-              if (result.finalResult) {
-                _isListening = false;
-              }
-            });
-          },
+        await _speech.listen(
+          onResult: _onSpeechResult,
+          listenFor: Duration(seconds: 30), // Listen for 30 seconds max
+          partialResults: true, // Update text while speaking
+        );
+      } else {
+        // Show a snackbar if speech recognition isn't available
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text("Speech recognition not available on this device")),
         );
       }
     } else {
       setState(() => _isListening = false);
-      _speech.stop();
+      await _speech.stop();
     }
+  }
+
+// New method to handle speech results
+  void _onSpeechResult(result) {
+    setState(() {
+      _promptController.text = result.recognizedWords;
+      // If you want to automatically stop listening when speech is finished
+      if (result.finalResult) {
+        _isListening = false;
+      }
+    });
   }
 
   @override
@@ -196,8 +217,6 @@ class _VisionAssistantScreenState extends State<VisionAssistantScreen>
     }
   }
 
- 
-
   Future<void> _analyzeImage() async {
     if (_image == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -211,9 +230,14 @@ class _VisionAssistantScreenState extends State<VisionAssistantScreen>
       _isProcessing = true;
     });
 
+    Future<bool> _requestMicrophonePermission() async {
+      var status = await Permission.microphone.request();
+      return status.isGranted;
+    }
+
     try {
-       // Upload the image to Cloudinary and set _imageUrl
-        await upload();
+      // Upload the image to Cloudinary and set _imageUrl
+      await upload();
 
       // Use the API to get the completion
       final response = await http.post(
@@ -416,19 +440,31 @@ class _VisionAssistantScreenState extends State<VisionAssistantScreen>
                             borderSide: BorderSide.none,
                           ),
                           filled: true,
-                          fillColor: colorScheme.surfaceContainerHighest
+                          fillColor: Theme.of(context)
+                              .colorScheme
+                              .surfaceContainerHighest
                               .withOpacity(0.5),
                           suffixIcon: IconButton(
                             onPressed: _listen,
-                            icon: Icon(
-                              _isListening ? Icons.mic : Icons.mic_none,
-                              color: _isListening ? colorScheme.primary : null,
+                            tooltip: _isListening
+                                ? 'Stop listening'
+                                : 'Start listening',
+                            icon: AnimatedSwitcher(
+                              duration: Duration(milliseconds: 200),
+                              child: Icon(
+                                _isListening ? Icons.mic : Icons.mic_none,
+                                key: ValueKey(_isListening),
+                                color: _isListening
+                                    ? Theme.of(context).colorScheme.primary
+                                    : null,
+                              ),
                             ),
                           ),
                         ),
                         minLines: 2,
                         maxLines: 3,
                       ),
+
                       const SizedBox(height: 16),
 
                       // Analyze button
@@ -553,8 +589,8 @@ class _VisionAssistantScreenState extends State<VisionAssistantScreen>
                       color: colorScheme.primary,
                     ),
                     _buildAccessibilityButton(
-                      icon: Icons.mic,
-                      label: 'Ask',
+                      icon: _isListening ? Icons.mic_off : Icons.mic,
+                      label: _isListening ? 'Stop' : 'Ask',
                       onPressed: _listen,
                       color: colorScheme.secondary,
                       isActive: _isListening,
@@ -632,4 +668,9 @@ class _VisionAssistantScreenState extends State<VisionAssistantScreen>
       ],
     );
   }
+}
+
+Future<bool> _requestMicrophonePermission() async {
+  var status = await Permission.microphone.request();
+  return status.isGranted;
 }

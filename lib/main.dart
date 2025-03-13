@@ -6,7 +6,8 @@ import 'package:cloudinary_flutter/image/cld_image.dart';
 import 'package:cloudinary_url_gen/cloudinary.dart';
 
 void main() {
-  CloudinaryContext.cloudinary = Cloudinary.fromCloudName(cloudName: 'dkglul7cz');
+  CloudinaryContext.cloudinary =
+      Cloudinary.fromCloudName(cloudName: 'dkglul7cz');
   runApp(const MyApp());
 }
 
@@ -44,7 +45,8 @@ class AuthScreen extends StatefulWidget {
   _AuthScreenState createState() => _AuthScreenState();
 }
 
-class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateMixin {
+class _AuthScreenState extends State<AuthScreen>
+    with SingleTickerProviderStateMixin {
   bool isLogin = true;
   late AnimationController _animationController;
   late Animation<double> _animation;
@@ -100,14 +102,14 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
               ),
             ),
           ),
-          
+
           // Background patterns
           Positioned.fill(
             child: CustomPaint(
               painter: BackgroundPainter(),
             ),
           ),
-          
+
           // Blur effect
           Positioned.fill(
             child: BackdropFilter(
@@ -117,7 +119,7 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
               ),
             ),
           ),
-          
+
           // Main content
           SafeArea(
             child: Center(
@@ -150,9 +152,9 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
                           ),
                         ),
                       ),
-                      
+
                       SizedBox(height: 40),
-                  
+
                       AnimatedSwitcher(
                         duration: Duration(milliseconds: 300),
                         child: Text(
@@ -165,9 +167,9 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
                           ),
                         ),
                       ),
-                      
+
                       SizedBox(height: 12),
-                      
+
                       // Subtitle with animation
                       AnimatedSwitcher(
                         duration: Duration(milliseconds: 300),
@@ -183,9 +185,9 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
                           textAlign: TextAlign.center,
                         ),
                       ),
-                      
+
                       SizedBox(height: 40),
-                      
+
                       // Form with animation
                       AnimatedCrossFade(
                         firstChild: LoginForm(),
@@ -194,7 +196,8 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
                             ? CrossFadeState.showFirst
                             : CrossFadeState.showSecond,
                         duration: Duration(milliseconds: 400),
-                        layoutBuilder: (topChild, topChildKey, bottomChild, bottomChildKey) {
+                        layoutBuilder: (topChild, topChildKey, bottomChild,
+                            bottomChildKey) {
                           return Stack(
                             alignment: Alignment.center,
                             children: [
@@ -211,9 +214,9 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
                           );
                         },
                       ),
-                      
+
                       SizedBox(height: 20),
-                      
+
                       // Toggle between login and register
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
@@ -260,12 +263,12 @@ class LoginForm extends StatefulWidget {
 class _LoginFormState extends State<LoginForm> {
   final _formKey = GlobalKey<FormState>();
   bool _obscureText = true;
-  
+
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: MediaQuery.of(context).size.width > 500 
-          ? 500 
+      width: MediaQuery.of(context).size.width > 500
+          ? 500
           : MediaQuery.of(context).size.width * 0.9,
       child: Form(
         key: _formKey,
@@ -286,9 +289,9 @@ class _LoginFormState extends State<LoginForm> {
                 return null;
               },
             ),
-            
+
             SizedBox(height: 16),
-            
+
             // Password field
             TextFormField(
               obscureText: _obscureText,
@@ -315,9 +318,9 @@ class _LoginFormState extends State<LoginForm> {
                 return null;
               },
             ),
-            
+
             SizedBox(height: 8),
-            
+
             // Forgot password
             Align(
               alignment: Alignment.centerRight,
@@ -329,19 +332,20 @@ class _LoginFormState extends State<LoginForm> {
                 ),
               ),
             ),
-            
+
             SizedBox(height: 24),
-            
+
             // Login button
             ElevatedButton(
               onPressed: () {
                 if (_formKey.currentState!.validate()) {
                   // Process login
-                  Navigator.pushReplacement(context, 
-                  MaterialPageRoute(
-                    builder: (context) => HomeScreen(),
-                  ),
-                );
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => HomeScreen(),
+                    ),
+                  );
                 }
               },
               style: ElevatedButton.styleFrom(
@@ -381,12 +385,12 @@ class RegisterForm extends StatefulWidget {
 class _RegisterFormState extends State<RegisterForm> {
   final _formKey = GlobalKey<FormState>();
   bool _obscureText = true;
-  
+
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: MediaQuery.of(context).size.width > 500 
-          ? 500 
+      width: MediaQuery.of(context).size.width > 500
+          ? 500
           : MediaQuery.of(context).size.width * 0.9,
       child: Form(
         key: _formKey,
@@ -407,9 +411,9 @@ class _RegisterFormState extends State<RegisterForm> {
                 return null;
               },
             ),
-            
+
             SizedBox(height: 16),
-            
+
             // Username
             TextFormField(
               keyboardType: TextInputType.text,
@@ -425,9 +429,9 @@ class _RegisterFormState extends State<RegisterForm> {
                 return null;
               },
             ),
-            
+
             SizedBox(height: 16),
-            
+
             // Guardian Email
             TextFormField(
               keyboardType: TextInputType.emailAddress,
@@ -444,9 +448,9 @@ class _RegisterFormState extends State<RegisterForm> {
                 return null;
               },
             ),
-            
+
             SizedBox(height: 16),
-            
+
             // Patient Name
             TextFormField(
               keyboardType: TextInputType.name,
@@ -462,9 +466,9 @@ class _RegisterFormState extends State<RegisterForm> {
                 return null;
               },
             ),
-            
+
             SizedBox(height: 16),
-            
+
             // Password field
             TextFormField(
               obscureText: _obscureText,
@@ -494,9 +498,9 @@ class _RegisterFormState extends State<RegisterForm> {
                 return null;
               },
             ),
-            
+
             SizedBox(height: 24),
-            
+
             // Register button
             ElevatedButton(
               onPressed: () {
@@ -538,26 +542,26 @@ class BackgroundPainter extends CustomPainter {
     final paint = Paint()
       ..color = Colors.white.withOpacity(0.05)
       ..style = PaintingStyle.fill;
-    
+
     // Draw some circles for decoration
     canvas.drawCircle(
       Offset(size.width * 0.1, size.height * 0.1),
       size.width * 0.2,
       paint,
     );
-    
+
     canvas.drawCircle(
       Offset(size.width * 0.8, size.height * 0.3),
       size.width * 0.25,
       paint,
     );
-    
+
     canvas.drawCircle(
       Offset(size.width * 0.3, size.height * 0.7),
       size.width * 0.15,
       paint,
     );
-    
+
     canvas.drawCircle(
       Offset(size.width * 0.9, size.height * 0.9),
       size.width * 0.3,
