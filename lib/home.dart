@@ -6,8 +6,9 @@ import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
-
-
+import 'package:cloudinary_flutter/cloudinary_context.dart';
+import 'package:cloudinary_flutter/image/cld_image.dart';
+import 'package:cloudinary_url_gen/cloudinary.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -46,67 +47,68 @@ class VisionAssistantScreen extends StatefulWidget {
   _VisionAssistantScreenState createState() => _VisionAssistantScreenState();
 }
 
-class _VisionAssistantScreenState extends State<VisionAssistantScreen> with SingleTickerProviderStateMixin {
+class _VisionAssistantScreenState extends State<VisionAssistantScreen>
+    with SingleTickerProviderStateMixin {
   File? _image;
   final ImagePicker _picker = ImagePicker();
   final TextEditingController _promptController = TextEditingController();
   String _response = "";
   bool _isProcessing = false;
   String _imageUrl = "";
-  
+
   // For animations
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
-  
+
   // For text-to-speech
   final FlutterTts flutterTts = FlutterTts();
-  
+
   // For speech-to-text
   final stt.SpeechToText _speech = stt.SpeechToText();
   bool _isListening = false;
-  
+
   @override
   void initState() {
     super.initState();
-    
+
     // Initialize animation controller
     _animationController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 500),
     );
-    
+
     _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(
         parent: _animationController,
         curve: Curves.easeIn,
       ),
     );
-    
+
     // Initialize TTS
     _initTts();
-    
+
     // Initialize STT
     _initSpeech();
-    
+
     // Set default prompt
     _promptController.text = "Describe this image in detail. What do you see?";
   }
-  
+
   Future<void> _initTts() async {
     await flutterTts.setLanguage("en-US");
     await flutterTts.setSpeechRate(0.5);
     await flutterTts.setVolume(1.0);
     await flutterTts.setPitch(1.0);
   }
-  
+
   Future<void> _initSpeech() async {
     await _speech.initialize();
   }
-  
+
   Future<void> _speak(String text) async {
     await flutterTts.speak(text);
   }
-  
+
   Future<void> _listen() async {
     if (!_isListening) {
       bool available = await _speech.initialize();
@@ -128,7 +130,7 @@ class _VisionAssistantScreenState extends State<VisionAssistantScreen> with Sing
       _speech.stop();
     }
   }
-  
+
   @override
   void dispose() {
     _animationController.dispose();
@@ -136,13 +138,33 @@ class _VisionAssistantScreenState extends State<VisionAssistantScreen> with Sing
     flutterTts.stop();
     super.dispose();
   }
-  
+
+  Future<void> upload() async {
+    final url = Uri.parse('https://api.cloudinary.com/v1_1/dkglul7cz/upload');
+
+    final request = http.MultipartRequest('POST', url)
+      ..fields['upload_preset'] = 'uploood'
+      ..files.add(await http.MultipartFile.fromPath('file', _image!.path));
+
+    final response = await request.send();
+    if (response.statusCode == 200) {
+      final responseData = await response.stream.toBytes();
+      final responseString = String.fromCharCodes(responseData);
+      final jsonMap = jsonDecode(responseString);
+
+      setState(() {
+        final url = jsonMap['url'];
+        _imageUrl = url;
+      });
+    }
+  }
+
   Future<void> _getImageFromCamera() async {
     final XFile? pickedFile = await _picker.pickImage(
       source: ImageSource.camera,
       preferredCameraDevice: CameraDevice.rear,
     );
-    
+
     if (pickedFile != null) {
       setState(() {
         _image = File(pickedFile.path);
@@ -150,15 +172,17 @@ class _VisionAssistantScreenState extends State<VisionAssistantScreen> with Sing
         _animationController.forward();
         _response = "";
       });
-      
+
       // Automatically speak a confirmation for blind users
-      _speak("Image captured. Ask me about this image by tapping the microphone button or the analyze button.");
+      _speak(
+          "Image captured. Ask me about this image by tapping the microphone button or the analyze button.");
     }
   }
-  
+
   Future<void> _getImageFromGallery() async {
-    final XFile? pickedFile = await _picker.pickImage(source: ImageSource.gallery);
-    
+    final XFile? pickedFile =
+        await _picker.pickImage(source: ImageSource.gallery);
+
     if (pickedFile != null) {
       setState(() {
         _image = File(pickedFile.path);
@@ -166,24 +190,14 @@ class _VisionAssistantScreenState extends State<VisionAssistantScreen> with Sing
         _animationController.forward();
         _response = "";
       });
-      
+
       // Speak confirmation
       _speak("Image selected from gallery. Ask me about this image.");
     }
   }
-  
-  Future<String> _getImageUrl() async {
-    if (_image == null) return "";
-    
-    // In a real app, you would upload the image to a server and get a URL
-    // For demo purposes, we'll use a placeholder URL
-    // This would need to be replaced with actual image upload code
-    
-    // Simulating upload delay
-    await Future.delayed(const Duration(seconds: 1));
-    return "https://images.pexels.com/photos/459225/pexels-photo-459225.jpeg?cs=srgb&dl=daylight-environment-forest-459225.jpg&fm=jpg";
-  }
-  
+
+ 
+
   Future<void> _analyzeImage() async {
     if (_image == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -192,15 +206,15 @@ class _VisionAssistantScreenState extends State<VisionAssistantScreen> with Sing
       _speak("Please take or select an image first");
       return;
     }
-    
+
     setState(() {
       _isProcessing = true;
     });
-    
+
     try {
-      // Get image URL (in a real app, this would upload the image)
-      _imageUrl = await _getImageUrl();
-      
+       // Upload the image to Cloudinary and set _imageUrl
+        await upload();
+
       // Use the API to get the completion
       final response = await http.post(
         Uri.parse('https://api.thehive.ai/api/v3/chat/completions'),
@@ -215,7 +229,10 @@ class _VisionAssistantScreenState extends State<VisionAssistantScreen> with Sing
               'role': 'user',
               'content': [
                 {'type': 'text', 'text': _promptController.text},
-                {'type': 'image_url', 'image_url': {'url': _imageUrl}}
+                {
+                  'type': 'image_url',
+                  'image_url': {'url': _imageUrl}
+                }
               ]
             }
           ],
@@ -223,16 +240,16 @@ class _VisionAssistantScreenState extends State<VisionAssistantScreen> with Sing
           'max_tokens': 1000,
         }),
       );
-      
+
       if (response.statusCode == 200) {
         final jsonResponse = jsonDecode(response.body);
         final result = jsonResponse['choices'][0]['message']['content'];
-        
+
         setState(() {
           _response = result;
           _isProcessing = false;
         });
-        
+
         // Automatically read the response for blind users
         _speak(result);
       } else {
@@ -250,12 +267,12 @@ class _VisionAssistantScreenState extends State<VisionAssistantScreen> with Sing
       _speak("Sorry, there was an error processing your request.");
     }
   }
-  
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
-    
+
     return Scaffold(
       appBar: AppBar(
         title: Text(
@@ -301,24 +318,28 @@ class _VisionAssistantScreenState extends State<VisionAssistantScreen> with Sing
                             child: _image == null
                                 ? Center(
                                     child: Column(
-                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
                                       children: [
                                         Icon(
                                           Icons.camera_alt_outlined,
                                           size: 64,
-                                          color: colorScheme.onSurfaceVariant.withOpacity(0.6),
+                                          color: colorScheme.onSurfaceVariant
+                                              .withOpacity(0.6),
                                         ),
                                         const SizedBox(height: 16),
                                         Text(
                                           'Tap to capture image',
                                           style: textTheme.bodyLarge?.copyWith(
-                                            color: colorScheme.onSurfaceVariant.withOpacity(0.6),
+                                            color: colorScheme.onSurfaceVariant
+                                                .withOpacity(0.6),
                                           ),
                                         ),
                                         Text(
                                           'Double tap for quick capture',
                                           style: textTheme.bodySmall?.copyWith(
-                                            color: colorScheme.onSurfaceVariant.withOpacity(0.4),
+                                            color: colorScheme.onSurfaceVariant
+                                                .withOpacity(0.4),
                                           ),
                                         ),
                                       ],
@@ -336,9 +357,9 @@ class _VisionAssistantScreenState extends State<VisionAssistantScreen> with Sing
                           ),
                         ),
                       ),
-                      
+
                       const SizedBox(height: 16),
-                      
+
                       // Image source buttons
                       Row(
                         children: [
@@ -348,7 +369,8 @@ class _VisionAssistantScreenState extends State<VisionAssistantScreen> with Sing
                               icon: const Icon(Icons.camera_alt),
                               label: const Text('Camera'),
                               style: ElevatedButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 12),
                                 backgroundColor: colorScheme.primaryContainer,
                                 foregroundColor: colorScheme.onPrimaryContainer,
                                 elevation: 0,
@@ -362,18 +384,20 @@ class _VisionAssistantScreenState extends State<VisionAssistantScreen> with Sing
                               icon: const Icon(Icons.photo_library),
                               label: const Text('Gallery'),
                               style: ElevatedButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 12),
                                 backgroundColor: colorScheme.secondaryContainer,
-                                foregroundColor: colorScheme.onSecondaryContainer,
+                                foregroundColor:
+                                    colorScheme.onSecondaryContainer,
                                 elevation: 0,
                               ),
                             ),
                           ),
                         ],
                       ),
-                      
+
                       const SizedBox(height: 24),
-                      
+
                       // Prompt input
                       Text(
                         'Ask about the image:',
@@ -385,13 +409,15 @@ class _VisionAssistantScreenState extends State<VisionAssistantScreen> with Sing
                       TextField(
                         controller: _promptController,
                         decoration: InputDecoration(
-                          hintText: 'What would you like to know about this image?',
+                          hintText:
+                              'What would you like to know about this image?',
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
                             borderSide: BorderSide.none,
                           ),
                           filled: true,
-                          fillColor: colorScheme.surfaceContainerHighest.withOpacity(0.5),
+                          fillColor: colorScheme.surfaceContainerHighest
+                              .withOpacity(0.5),
                           suffixIcon: IconButton(
                             onPressed: _listen,
                             icon: Icon(
@@ -404,7 +430,7 @@ class _VisionAssistantScreenState extends State<VisionAssistantScreen> with Sing
                         maxLines: 3,
                       ),
                       const SizedBox(height: 16),
-                      
+
                       // Analyze button
                       ElevatedButton.icon(
                         onPressed: _isProcessing ? null : _analyzeImage,
@@ -418,7 +444,8 @@ class _VisionAssistantScreenState extends State<VisionAssistantScreen> with Sing
                                 ),
                               )
                             : const Icon(Icons.search),
-                        label: Text(_isProcessing ? 'Analyzing...' : 'Analyze Image'),
+                        label: Text(
+                            _isProcessing ? 'Analyzing...' : 'Analyze Image'),
                         style: ElevatedButton.styleFrom(
                           padding: const EdgeInsets.symmetric(vertical: 16),
                           backgroundColor: colorScheme.primary,
@@ -427,9 +454,9 @@ class _VisionAssistantScreenState extends State<VisionAssistantScreen> with Sing
                           elevation: 2,
                         ),
                       ),
-                      
+
                       const SizedBox(height: 24),
-                      
+
                       // Response section
                       if (_response.isNotEmpty) ...[
                         Text(
@@ -442,7 +469,8 @@ class _VisionAssistantScreenState extends State<VisionAssistantScreen> with Sing
                         Container(
                           padding: const EdgeInsets.all(16),
                           decoration: BoxDecoration(
-                            color: colorScheme.secondaryContainer.withOpacity(0.5),
+                            color:
+                                colorScheme.secondaryContainer.withOpacity(0.5),
                             borderRadius: BorderRadius.circular(16),
                             border: Border.all(
                               color: colorScheme.outline.withOpacity(0.1),
@@ -467,7 +495,8 @@ class _VisionAssistantScreenState extends State<VisionAssistantScreen> with Sing
                                     icon: const Icon(Icons.volume_up),
                                     tooltip: 'Read aloud',
                                     style: IconButton.styleFrom(
-                                      backgroundColor: colorScheme.surfaceContainerHighest,
+                                      backgroundColor:
+                                          colorScheme.surfaceContainerHighest,
                                       foregroundColor: colorScheme.primary,
                                     ),
                                   ),
@@ -475,14 +504,18 @@ class _VisionAssistantScreenState extends State<VisionAssistantScreen> with Sing
                                   IconButton(
                                     onPressed: () {
                                       // Copy to clipboard functionality would go here
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        const SnackBar(content: Text("Response copied to clipboard")),
+                                      ScaffoldMessenger.of(context)
+                                          .showSnackBar(
+                                        const SnackBar(
+                                            content: Text(
+                                                "Response copied to clipboard")),
                                       );
                                     },
                                     icon: const Icon(Icons.copy),
                                     tooltip: 'Copy to clipboard',
                                     style: IconButton.styleFrom(
-                                      backgroundColor: colorScheme.surfaceContainerHighest,
+                                      backgroundColor:
+                                          colorScheme.surfaceContainerHighest,
                                       foregroundColor: colorScheme.primary,
                                     ),
                                   ),
@@ -496,7 +529,7 @@ class _VisionAssistantScreenState extends State<VisionAssistantScreen> with Sing
                   ),
                 ),
               ),
-              
+
               // Quick access buttons for blind users
               Container(
                 padding: const EdgeInsets.all(16),
@@ -535,8 +568,8 @@ class _VisionAssistantScreenState extends State<VisionAssistantScreen> with Sing
                     _buildAccessibilityButton(
                       icon: Icons.volume_up,
                       label: 'Repeat',
-                      onPressed: () => _speak(_response.isEmpty 
-                          ? "No analysis yet. Please capture an image and analyze it." 
+                      onPressed: () => _speak(_response.isEmpty
+                          ? "No analysis yet. Please capture an image and analyze it."
                           : _response),
                       color: colorScheme.error,
                     ),
@@ -549,7 +582,7 @@ class _VisionAssistantScreenState extends State<VisionAssistantScreen> with Sing
       ),
     );
   }
-  
+
   Widget _buildAccessibilityButton({
     required IconData icon,
     required String label,
@@ -582,9 +615,7 @@ class _VisionAssistantScreenState extends State<VisionAssistantScreen> with Sing
                 child: Icon(
                   icon,
                   size: 28,
-                  color: isActive 
-                      ? Colors.white 
-                      : color,
+                  color: isActive ? Colors.white : color,
                 ),
               ),
             ),
