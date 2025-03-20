@@ -307,47 +307,66 @@ class _LoginFormState extends State<LoginForm> {
   }
 
   Future<void> _signIn() async {
-    if (_formKey.currentState!.validate()) {
-      setState(() {
-        _isLoading = true;
-      });
+  if (_formKey.currentState!.validate()) {
+    setState(() {
+      _isLoading = true;
+    });
 
-      final email = _emailController.text.trim();
-      final password = _passwordController.text.trim();
+    final email = _emailController.text.trim();
+    final password = _passwordController.text.trim();
 
-      try {
-        final res = await Supabase.instance.client.auth.signInWithPassword(
-          email: email,
-          password: password,
-        );
+    try {
+      final res = await Supabase.instance.client.auth.signInWithPassword(
+        email: email,
+        password: password,
+      );
 
-        setState(() {
-          _isLoading = false;
-        });
+      if (res.session != null) {
+        final userId = res.user!.id;
 
-        if (res.session != null) {
-          // Successful login – navigate to HomeScreen.
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (context) => const HomeScreen()),
-          );
-        } else {
-          // In case session is null, treat as failure.
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("Login failed, please try again.")),
-          );
+        // ✅ Fetch user profile from Supabase
+        final profile = await Supabase.instance.client
+            .from('profiles')
+            .select()
+            .eq('user_id', userId)
+            .single();
+
+        // ✅ Store user details in local state (optional)
+        if (profile != null) {
+          print("Guardian Name: ${profile['guardian_name']}");
+          print("Username: ${profile['username']}");
+          print("Patient Name: ${profile['patient_name']}");
         }
-      } catch (e) {
+
         setState(() {
           _isLoading = false;
         });
-        // Handle exception.
+
+        // ✅ Navigate to HomeScreen
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const HomeScreen()),
+        );
+      } else {
+        setState(() {
+          _isLoading = false;
+        });
+
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.toString())),
+          const SnackBar(content: Text("Login failed, please try again.")),
         );
       }
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString())),
+      );
     }
   }
+}
+
 
   @override
   Widget build(BuildContext context) {
@@ -460,62 +479,67 @@ class _RegisterFormState extends State<RegisterForm> {
   }
 
   Future<void> _signUp() async {
-    if (_formKey.currentState!.validate()) {
+  if (_formKey.currentState!.validate()) {
+    setState(() {
+      _isLoading = true;
+    });
+
+    final email = _emailController.text.trim();
+    final password = _passwordController.text.trim();
+    final guardianName = _guardianNameController.text.trim();
+    final username = _usernameController.text.trim();
+    final patientName = _patientNameController.text.trim();
+
+    try {
+      // 1. Register user with metadata using Supabase Auth.
+      final res = await Supabase.instance.client.auth.signUp(
+        email: email,
+        password: password,
+        data: {
+          'guardian_name': guardianName,
+          'username': username,
+          'patient_name': patientName,
+        },
+      );
+
+      // 2. Even if email verification is required, res.user is created.
+      if (res.user != null) {
+        final userId = res.user!.id;
+
+        // 3. Insert additional user details into the profiles table.
+        //    If there's an error, it will throw an exception caught by the catch block.
+        await Supabase.instance.client.from('profiles').insert({
+          'user_id': userId,
+          'guardian_name': guardianName,
+          'username': username,
+          'patient_name': patientName,
+          'email': email,
+        });
+      }
+
       setState(() {
-        _isLoading = true;
+        _isLoading = false;
       });
 
-      final email = _emailController.text.trim();
-      final password = _passwordController.text.trim();
-      final guardianName = _guardianNameController.text.trim();
-      final username = _usernameController.text.trim();
-      final patientName = _patientNameController.text.trim();
-
-      try {
-        // Call Supabase's signUp method.
-        // Optionally, pass additional user metadata using the "data" parameter.
-        final res = await Supabase.instance.client.auth.signUp(
-          email: email,
-          password: password,
-          // Uncomment below to pass metadata if needed:
-          // data: {
-          //   'guardian_name': guardianName,
-          //   'username': username,
-          //   'patient_name': patientName,
-          // },
-        );
-
-        setState(() {
-          _isLoading = false;
-        });
-
-        if (res.user != null) {
-          // Registration successful, navigate to HomeScreen.
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (context) => const HomeScreen()),
-          );
-        } else {
-          // In some setups (like with email verification enabled),
-          // no user object is returned immediately.
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                "Registration successful! Please check your email for verification.",
-              ),
-            ),
-          );
-        }
-      } catch (e) {
-        setState(() {
-          _isLoading = false;
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.toString())),
-        );
-      }
+      // 4. Navigate to HomeScreen regardless of email verification.
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => const HomeScreen()),
+      );
+    } catch (e) {
+      // If any exception is thrown (including from the insert call), it lands here.
+      setState(() {
+        _isLoading = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Error: $e")),
+      );
     }
   }
+}
+
+
+
 
   @override
   Widget build(BuildContext context) {
