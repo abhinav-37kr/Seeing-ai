@@ -10,6 +10,7 @@ import 'package:cloudinary_flutter/cloudinary_context.dart';
 import 'package:cloudinary_flutter/image/cld_image.dart';
 import 'package:cloudinary_url_gen/cloudinary.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'location_tracking_page.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -308,6 +309,20 @@ class _VisionAssistantScreenState extends State<VisionAssistantScreen>
         centerTitle: true,
         elevation: 0,
         backgroundColor: colorScheme.surface,
+         actions: [
+          IconButton(
+            icon: const Icon(Icons.location_on),
+            tooltip: 'Track Location',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const LocationTrackingPage(),
+                ),
+              );
+            },
+          ),
+        ],
       ),
       body: GestureDetector(
         onTap: () => FocusScope.of(context).unfocus(),

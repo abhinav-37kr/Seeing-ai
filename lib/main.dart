@@ -4,10 +4,16 @@ import 'dart:ui';
 import 'package:cloudinary_flutter/cloudinary_context.dart';
 import 'package:cloudinary_flutter/image/cld_image.dart';
 import 'package:cloudinary_url_gen/cloudinary.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
-void main() {
+Future<void> main() async {
   CloudinaryContext.cloudinary =
       Cloudinary.fromCloudName(cloudName: 'dkglul7cz');
+  await Supabase.initialize(
+    url: 'https://qilmmwmfajorqfvxtnjx.supabase.co', // Replace with your URL
+    anonKey:
+        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFpbG1td21mYWpvcnFmdnh0bmp4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDIzMTk5NjksImV4cCI6MjA1Nzg5NTk2OX0.YkEBGr-KIo3bonCZ2QxftwHc7jiSzIGZD6V9t5LUhrA', // Replace with your anon key
+  );
   runApp(const MyApp());
 }
 
@@ -33,7 +39,34 @@ class MyApp extends StatelessWidget {
           contentPadding: EdgeInsets.symmetric(horizontal: 24, vertical: 20),
         ),
       ),
-      home: const AuthScreen(),
+      home: const AuthWidget(),
+    );
+  }
+}
+
+class AuthWidget extends StatelessWidget {
+  const AuthWidget({Key? key}) : super(key: key);
+  
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder(
+      // Listen to the authentication state changes.
+      stream: Supabase.instance.client.auth.onAuthStateChange,
+      builder: (context, snapshot) {
+        // While waiting for the auth state, show a loading indicator.
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
+        // Check the current session.
+        final session = Supabase.instance.client.auth.currentSession;
+        if (session != null) {
+          return const HomeScreen();
+        } else {
+          return const AuthScreen();
+        }
+      },
     );
   }
 }
@@ -262,7 +295,59 @@ class LoginForm extends StatefulWidget {
 
 class _LoginFormState extends State<LoginForm> {
   final _formKey = GlobalKey<FormState>();
-  bool _obscureText = true;
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
+  bool _isLoading = false;
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _signIn() async {
+    if (_formKey.currentState!.validate()) {
+      setState(() {
+        _isLoading = true;
+      });
+
+      final email = _emailController.text.trim();
+      final password = _passwordController.text.trim();
+
+      try {
+        final res = await Supabase.instance.client.auth.signInWithPassword(
+          email: email,
+          password: password,
+        );
+
+        setState(() {
+          _isLoading = false;
+        });
+
+        if (res.session != null) {
+          // Successful login – navigate to HomeScreen.
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => const HomeScreen()),
+          );
+        } else {
+          // In case session is null, treat as failure.
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Login failed, please try again.")),
+          );
+        }
+      } catch (e) {
+        setState(() {
+          _isLoading = false;
+        });
+        // Handle exception.
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString())),
+        );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -276,40 +361,32 @@ class _LoginFormState extends State<LoginForm> {
           children: [
             // Email field
             TextFormField(
+              controller: _emailController,
               keyboardType: TextInputType.emailAddress,
-              style: TextStyle(color: Colors.white),
+              style: const TextStyle(color: Colors.white),
               decoration: InputDecoration(
                 hintText: 'Guardian Email',
-                prefixIcon: Icon(Icons.email_outlined, color: Colors.white70),
+                prefixIcon:
+                    const Icon(Icons.email_outlined, color: Colors.white70),
               ),
               validator: (value) {
                 if (value == null || value.isEmpty) {
                   return 'Please enter your email';
                 }
+                // Additional email validation can be added here
                 return null;
               },
             ),
-
-            SizedBox(height: 16),
-
+            const SizedBox(height: 16),
             // Password field
             TextFormField(
-              obscureText: _obscureText,
-              style: TextStyle(color: Colors.white),
+              controller: _passwordController,
+              obscureText: true,
+              style: const TextStyle(color: Colors.white),
               decoration: InputDecoration(
                 hintText: 'Password',
-                prefixIcon: Icon(Icons.lock_outline, color: Colors.white70),
-                suffixIcon: IconButton(
-                  icon: Icon(
-                    _obscureText ? Icons.visibility_off : Icons.visibility,
-                    color: Colors.white70,
-                  ),
-                  onPressed: () {
-                    setState(() {
-                      _obscureText = !_obscureText;
-                    });
-                  },
-                ),
+                prefixIcon:
+                    const Icon(Icons.lock_outline, color: Colors.white70),
               ),
               validator: (value) {
                 if (value == null || value.isEmpty) {
@@ -318,55 +395,32 @@ class _LoginFormState extends State<LoginForm> {
                 return null;
               },
             ),
-
-            SizedBox(height: 8),
-
-            // Forgot password
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton(
-                onPressed: () {},
-                child: Text(
-                  'Forgot Password?',
-                  style: TextStyle(color: Colors.white70),
-                ),
-              ),
-            ),
-
-            SizedBox(height: 24),
-
+            const SizedBox(height: 24),
             // Login button
             ElevatedButton(
-              onPressed: () {
-                if (_formKey.currentState!.validate()) {
-                  // Process login
-                  Navigator.pushReplacement(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => HomeScreen(),
-                    ),
-                  );
-                }
-              },
+              onPressed: _isLoading ? null : _signIn,
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.white,
-                foregroundColor: Color(0xFF1A237E),
-                padding: EdgeInsets.symmetric(vertical: 16),
-                minimumSize: Size(double.infinity, 56),
+                foregroundColor: const Color(0xFF1A237E),
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                minimumSize: const Size(double.infinity, 56),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
-                elevation: 8,
-                shadowColor: Colors.black.withOpacity(0.3),
               ),
-              child: Text(
-                'SIGN IN',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 1.2,
-                ),
-              ),
+              child: _isLoading
+                  ? const CircularProgressIndicator(
+                      valueColor:
+                          AlwaysStoppedAnimation<Color>(Color(0xFF1A237E)),
+                    )
+                  : const Text(
+                      'SIGN IN',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 1.2,
+                      ),
+                    ),
             ),
           ],
         ),
@@ -384,7 +438,84 @@ class RegisterForm extends StatefulWidget {
 
 class _RegisterFormState extends State<RegisterForm> {
   final _formKey = GlobalKey<FormState>();
+
+  // Define controllers for each field.
+  final TextEditingController _guardianNameController = TextEditingController();
+  final TextEditingController _usernameController = TextEditingController();
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _patientNameController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
+
   bool _obscureText = true;
+  bool _isLoading = false;
+
+  @override
+  void dispose() {
+    _guardianNameController.dispose();
+    _usernameController.dispose();
+    _emailController.dispose();
+    _patientNameController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _signUp() async {
+    if (_formKey.currentState!.validate()) {
+      setState(() {
+        _isLoading = true;
+      });
+
+      final email = _emailController.text.trim();
+      final password = _passwordController.text.trim();
+      final guardianName = _guardianNameController.text.trim();
+      final username = _usernameController.text.trim();
+      final patientName = _patientNameController.text.trim();
+
+      try {
+        // Call Supabase's signUp method.
+        // Optionally, pass additional user metadata using the "data" parameter.
+        final res = await Supabase.instance.client.auth.signUp(
+          email: email,
+          password: password,
+          // Uncomment below to pass metadata if needed:
+          // data: {
+          //   'guardian_name': guardianName,
+          //   'username': username,
+          //   'patient_name': patientName,
+          // },
+        );
+
+        setState(() {
+          _isLoading = false;
+        });
+
+        if (res.user != null) {
+          // Registration successful, navigate to HomeScreen.
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => const HomeScreen()),
+          );
+        } else {
+          // In some setups (like with email verification enabled),
+          // no user object is returned immediately.
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                "Registration successful! Please check your email for verification.",
+              ),
+            ),
+          );
+        }
+      } catch (e) {
+        setState(() {
+          _isLoading = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString())),
+        );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -396,13 +527,15 @@ class _RegisterFormState extends State<RegisterForm> {
         key: _formKey,
         child: Column(
           children: [
-            // Guardian Name
+            // Guardian Name Field
             TextFormField(
+              controller: _guardianNameController,
               keyboardType: TextInputType.name,
-              style: TextStyle(color: Colors.white),
+              style: const TextStyle(color: Colors.white),
               decoration: InputDecoration(
                 hintText: 'Guardian Name',
-                prefixIcon: Icon(Icons.person_outline, color: Colors.white70),
+                prefixIcon:
+                    const Icon(Icons.person_outline, color: Colors.white70),
               ),
               validator: (value) {
                 if (value == null || value.isEmpty) {
@@ -411,16 +544,16 @@ class _RegisterFormState extends State<RegisterForm> {
                 return null;
               },
             ),
-
-            SizedBox(height: 16),
-
-            // Username
+            const SizedBox(height: 16),
+            // Username Field
             TextFormField(
+              controller: _usernameController,
               keyboardType: TextInputType.text,
-              style: TextStyle(color: Colors.white),
+              style: const TextStyle(color: Colors.white),
               decoration: InputDecoration(
                 hintText: 'Username',
-                prefixIcon: Icon(Icons.alternate_email, color: Colors.white70),
+                prefixIcon:
+                    const Icon(Icons.alternate_email, color: Colors.white70),
               ),
               validator: (value) {
                 if (value == null || value.isEmpty) {
@@ -429,35 +562,34 @@ class _RegisterFormState extends State<RegisterForm> {
                 return null;
               },
             ),
-
-            SizedBox(height: 16),
-
-            // Guardian Email
+            const SizedBox(height: 16),
+            // Guardian Email Field
             TextFormField(
+              controller: _emailController,
               keyboardType: TextInputType.emailAddress,
-              style: TextStyle(color: Colors.white),
+              style: const TextStyle(color: Colors.white),
               decoration: InputDecoration(
                 hintText: 'Guardian Email',
-                prefixIcon: Icon(Icons.email_outlined, color: Colors.white70),
+                prefixIcon:
+                    const Icon(Icons.email_outlined, color: Colors.white70),
               ),
               validator: (value) {
                 if (value == null || value.isEmpty) {
                   return 'Please enter guardian email';
                 }
-                // Add email validation
                 return null;
               },
             ),
-
-            SizedBox(height: 16),
-
-            // Patient Name
+            const SizedBox(height: 16),
+            // Patient Name Field
             TextFormField(
+              controller: _patientNameController,
               keyboardType: TextInputType.name,
-              style: TextStyle(color: Colors.white),
+              style: const TextStyle(color: Colors.white),
               decoration: InputDecoration(
                 hintText: 'Patient Name',
-                prefixIcon: Icon(Icons.personal_injury, color: Colors.white70),
+                prefixIcon:
+                    const Icon(Icons.personal_injury, color: Colors.white70),
               ),
               validator: (value) {
                 if (value == null || value.isEmpty) {
@@ -466,16 +598,16 @@ class _RegisterFormState extends State<RegisterForm> {
                 return null;
               },
             ),
-
-            SizedBox(height: 16),
-
-            // Password field
+            const SizedBox(height: 16),
+            // Password Field
             TextFormField(
+              controller: _passwordController,
               obscureText: _obscureText,
-              style: TextStyle(color: Colors.white),
+              style: const TextStyle(color: Colors.white),
               decoration: InputDecoration(
                 hintText: 'Password',
-                prefixIcon: Icon(Icons.lock_outline, color: Colors.white70),
+                prefixIcon:
+                    const Icon(Icons.lock_outline, color: Colors.white70),
                 suffixIcon: IconButton(
                   icon: Icon(
                     _obscureText ? Icons.visibility_off : Icons.visibility,
@@ -498,35 +630,32 @@ class _RegisterFormState extends State<RegisterForm> {
                 return null;
               },
             ),
-
-            SizedBox(height: 24),
-
-            // Register button
+            const SizedBox(height: 24),
+            // Register Button
             ElevatedButton(
-              onPressed: () {
-                if (_formKey.currentState!.validate()) {
-                  // Process registration
-                }
-              },
+              onPressed: _isLoading ? null : _signUp,
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.white,
-                foregroundColor: Color(0xFF1A237E),
-                padding: EdgeInsets.symmetric(vertical: 16),
-                minimumSize: Size(double.infinity, 56),
+                foregroundColor: const Color(0xFF1A237E),
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                minimumSize: const Size(double.infinity, 56),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
-                elevation: 8,
-                shadowColor: Colors.black.withOpacity(0.3),
               ),
-              child: Text(
-                'SIGN UP',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 1.2,
-                ),
-              ),
+              child: _isLoading
+                  ? const CircularProgressIndicator(
+                      valueColor:
+                          AlwaysStoppedAnimation<Color>(Color(0xFF1A237E)),
+                    )
+                  : const Text(
+                      'SIGN UP',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 1.2,
+                      ),
+                    ),
             ),
           ],
         ),
