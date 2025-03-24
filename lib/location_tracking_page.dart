@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:mailer/mailer.dart';
+import 'package:mailer/smtp_server/gmail.dart';
 
 class LocationTrackingPage extends StatefulWidget {
   const LocationTrackingPage({Key? key}) : super(key: key);
@@ -17,7 +19,7 @@ class _LocationTrackingPageState extends State<LocationTrackingPage> {
   @override
   void initState() {
     super.initState();
-    // Automatically track location if in blind mode.
+    // Automatically track location if not in guardian mode.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!isGuardian) {
         _trackBlindLocation();
@@ -25,134 +27,149 @@ class _LocationTrackingPageState extends State<LocationTrackingPage> {
     });
   }
 
-  /// Blind person mode: Automatically track and send this device’s location to blind_locations.
+  /// Blind mode: Track and insert location into blind_locations table.
   Future<void> _trackBlindLocation() async {
-  setState(() {
-    isTracking = true;
-    statusMessage = 'Requesting location permission...';
-  });
-
-  bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-  if (!serviceEnabled) {
     setState(() {
-      statusMessage = 'Location services are disabled. Please enable them.';
-      isTracking = false;
+      isTracking = true;
+      statusMessage = 'Requesting location permission...';
     });
-    return;
-  }
 
-  LocationPermission permission = await Geolocator.checkPermission();
-  if (permission == LocationPermission.denied) {
-    permission = await Geolocator.requestPermission();
-    if (permission == LocationPermission.denied) {
+    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
       setState(() {
-        statusMessage = 'Location permissions are denied.';
+        statusMessage = 'Location services are disabled. Please enable them.';
         isTracking = false;
       });
       return;
     }
-  }
-  if (permission == LocationPermission.deniedForever) {
-    setState(() {
-      statusMessage = 'Location permissions are permanently denied.';
-      isTracking = false;
-    });
-    return;
-  }
 
-  setState(() {
-    statusMessage = 'Fetching location...';
-  });
-
-  try {
-    Position position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high);
-
-    final userId = Supabase.instance.client.auth.currentUser?.id;
-
-    // Insert location data into the blind_locations table.
-    await Supabase.instance.client
-        .from('blind_locations')
-        .insert({
-          'user_id': userId,
-          'latitude': position.latitude,
-          'longitude': position.longitude,
+    LocationPermission permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        setState(() {
+          statusMessage = 'Location permissions are denied.';
+          isTracking = false;
         });
+        return;
+      }
+    }
+    if (permission == LocationPermission.deniedForever) {
+      setState(() {
+        statusMessage = 'Location permissions are permanently denied.';
+        isTracking = false;
+      });
+      return;
+    }
 
     setState(() {
-      statusMessage = 'Location tracked successfully!';
+      statusMessage = 'Fetching location...';
     });
-  } catch (e) {
-    setState(() {
-      statusMessage = 'Error: $e';
-    });
-  } finally {
-    setState(() {
-      isTracking = false;
-    });
+
+    try {
+      Position position = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.high);
+
+      final userId = Supabase.instance.client.auth.currentUser?.id;
+
+      // Insert location into blind_locations table.
+      await Supabase.instance.client.from('blind_locations').insert({
+        'user_id': userId,
+        'latitude': position.latitude,
+        'longitude': position.longitude,
+      });
+
+      setState(() {
+        statusMessage = 'Location tracked successfully!';
+      });
+    } catch (e) {
+      setState(() {
+        statusMessage = 'Error: $e';
+      });
+    } finally {
+      setState(() {
+        isTracking = false;
+      });
+    }
   }
-}
 
-
-  /// Guardian mode: Manually retrieve the blind person’s latest location from blind_locations.
-  Future<void> _retrieveBlindLocation() async {
+  /// Guardian mode: Retrieve the latest blind location and send email.
+  Future<void> _sendLocationEmail() async {
     setState(() {
       isTracking = true;
       statusMessage = 'Fetching blind person location...';
     });
 
     try {
-  // Ensure the current user id is not null.
-  final userId = Supabase.instance.client.auth.currentUser!.id;
-  
-  // Perform the query.
-  final res = await Supabase.instance.client
-      .from('blind_locations')
-      .select()
-      .eq('user_id', userId)
-      .order('timestamp', ascending: false)
-      .limit(1)
-      .maybeSingle();
-  
-  // If the response is a Map, we try to extract error and data.
-  if (res is Map<String, dynamic>) {
-    // Check if the Map contains an 'error' key.
-    if (res.containsKey('error') && res['error'] != null) {
+      // Get the blind person's latest location.
+      final userId = Supabase.instance.client.auth.currentUser!.id;
+      final locationRes = await Supabase.instance.client
+          .from('blind_locations')
+          .select()
+          .eq('user_id', userId)
+          .order('timestamp', ascending: false)
+          .limit(1)
+          .maybeSingle();
+
+      if (locationRes == null) {
+        setState(() {
+          statusMessage = 'No blind location data available.';
+        });
+        return;
+      }
+
+      // Assuming locationRes.data returns a Map with keys 'latitude' and 'longitude'.
+      final locationData = locationRes as Map<String, dynamic>;
+      final double latitude = locationData['latitude'];
+      final double longitude = locationData['longitude'];
+
+      // Retrieve guardian email from profiles table.
+      final profileRes = await Supabase.instance.client
+          .from('profiles')
+          .select('email')
+          .eq('user_id', userId)
+          .single();
+
+      if (profileRes == null) {
+        setState(() {
+          statusMessage = 'Guardian email not found.';
+        });
+        return;
+      }
+
+      final profileData = profileRes as Map<String, dynamic>;
+      final guardianEmail = profileData['email'];
+
+      // Compose email content.
+      final subject = 'Blind Person Latest Location';
+      final body = 'The latest location is:\n'
+          'Latitude: $latitude\n'
+          'Longitude: $longitude';
+
+      // Configure SMTP settings (using Gmail as an example).
+      String username = 'seeing37ai@gmail.com';
+      String password = 'bwxb xzhq vrgu yabq'; // Use an app-specific password for Gmail.
+
+      final smtpServer = gmail(username, password);
+
+      final message = Message()
+        ..from = Address(username, 'Sense AI')
+        ..recipients.add(guardianEmail)
+        ..subject = subject
+        ..text = body;
+
+      // Send the email.
+      final sendReport = await send(message, smtpServer);
+
       setState(() {
-        statusMessage = 'Error fetching location: ${res['error']['message']}';
+        statusMessage = 'Email sent to guardian successfully!';
       });
-    }
-    // Otherwise, check if it contains a 'data' key.
-    else if (res.containsKey('data') && res['data'] != null) {
-      final data = res['data'] as Map<String, dynamic>;
+      print('Message sent: ' + sendReport.toString());
+    } catch (e) {
       setState(() {
-        statusMessage =
-            'Blind Location: Lat ${data['latitude']}, Lon ${data['longitude']}';
+        statusMessage = 'Error sending email: $e';
       });
-    } else {
-      setState(() {
-        statusMessage = 'No blind location data available.';
-      });
-    }
-  } 
-  // If res isn't a Map, assume it is the data directly.
-  else if (res != null) {
-    final data = res as Map<String, dynamic>;
-    setState(() {
-      statusMessage =
-          'Blind Location: Lat ${data['latitude']}, Lon ${data['longitude']}';
-    });
-  } else {
-    setState(() {
-      statusMessage = 'No blind location data available.';
-    });
-  }
-} catch (e) {
-  setState(() {
-    statusMessage = 'Error: $e';
-  });
-}
- finally {
+    } finally {
       setState(() {
         isTracking = false;
       });
@@ -169,7 +186,7 @@ class _LocationTrackingPageState extends State<LocationTrackingPage> {
         padding: const EdgeInsets.all(16.0),
         child: Column(
           children: [
-            // Toggle: Guardian mode when enabled; Blind mode when disabled.
+            // Toggle between Guardian and Blind mode.
             SwitchListTile(
               title: const Text('I am a Guardian'),
               value: isGuardian,
@@ -177,7 +194,7 @@ class _LocationTrackingPageState extends State<LocationTrackingPage> {
                 setState(() {
                   isGuardian = value;
                   statusMessage = '';
-                  // If switched to blind mode, immediately track location.
+                  // If switched to blind mode, automatically track location.
                   if (!isGuardian) {
                     _trackBlindLocation();
                   }
@@ -185,13 +202,13 @@ class _LocationTrackingPageState extends State<LocationTrackingPage> {
               },
             ),
             const SizedBox(height: 20),
-            // In Guardian mode, display a manual "Retrieve" button.
+            // In Guardian mode, show a button to send location via email.
             if (isGuardian)
               ElevatedButton(
-                onPressed: isTracking ? null : _retrieveBlindLocation,
+                onPressed: isTracking ? null : _sendLocationEmail,
                 child: isTracking
                     ? const CircularProgressIndicator()
-                    : const Text('Retrieve Blind Person Location'),
+                    : const Text('Track the Blind person Location'),
               )
             else
               const Text('Automatically tracking your location...'),

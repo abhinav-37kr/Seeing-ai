@@ -7,6 +7,7 @@ import 'package:flutter_tts/flutter_tts.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:permission_handler/permission_handler.dart';
 import 'location_tracking_page.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -133,6 +134,9 @@ class _HomeScreenState extends State<HomeScreen>
       setState(() {
         _imageUrl = jsonMap['url'];
       });
+
+      // After getting the image URL, insert it into the "images" table
+    
     }
   }
 
@@ -237,6 +241,23 @@ class _HomeScreenState extends State<HomeScreen>
       });
       _speak("Sorry, there was an error processing your request.");
     }
+    finally {
+    // In the finally block, insert the image record into Supabase
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    if (userId != null) {
+      final insertionResponse = await Supabase.instance.client.from('images').insert({
+        'user_id': userId,
+        'image_url': _imageUrl,
+        'created_at': DateTime.now().toIso8601String(),
+      });
+
+      if (insertionResponse.error != null) {
+        print('Error inserting image record: ${insertionResponse.error!.message}');
+      } else {
+        print('Image record inserted successfully.');
+      }
+    }
+  }
   }
 
   @override
