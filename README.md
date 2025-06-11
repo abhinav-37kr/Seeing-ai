@@ -1,4 +1,4 @@
-# final_app_vision
+# Seeing AI
 
 A new Flutter project.
 
